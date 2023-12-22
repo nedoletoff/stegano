@@ -1,58 +1,148 @@
-from PIL import Image
+import numpy as np
+import matplotlib.pyplot as plt
+import scipy.fftpack.dct
+import scipy.fftpack.idct
 
 
-def cox_algorithm_embed(image_path, secret_message, alpha):
-    img = Image.open(image_path)
-    pixels = img.load()
+def dct2(a):
+    """Выполняет 2D дискретное косинусное преобразование для матрицы a.
 
-    width, height = img.size
+  Args:
+    a: Матрица входных данных.
 
-    binary_secret_message = ''.join(format(ord(char), '08b') for char in secret_message)
+  Возвращает:
+    Матрица выходных данных.
+  """
 
-    index = 0
-    for y in range(height):
-        for x in range(width):
-            r, g, b = pixels[x, y]
-            if index < len(binary_secret_message):
-                r = int(format(r, '08b')[:-1] + binary_secret_message[index], 2)
-                index += 1
-            if index < len(binary_secret_message):
-                g = int(format(g, '08b')[:-1] + binary_secret_message[index], 2)
-                index += 1
-            if index < len(binary_secret_message):
-                b = int(format(b, '08b')[:-1] + binary_secret_message[index], 2)
-                index += 1
-            pixels[x, y] = (r, g, b)
-
-    img.save('embedded_image.bmp')
+    m, n, _ = a.shape
+    # Создаем матрицу коэффициентов DCT.
+    c = np.zeros((m, n), dtype=complex)
+    for u in range(m):
+        for v in range(n):
+            for i in range(m):
+                for j in range(n):
+                    c[u, v] += a[i, j] * np.cos((2 * np.pi * (i * u + j * v)) / (m * n))
+    # Нормируем матрицу коэффициентов DCT.
+    c /= np.sqrt(m * n)
+    return c
 
 
-# Пример использования функции
-cox_algorithm_embed('image.bmp', 'Секретное сообщение0000000', 10)
+def idct2(c):
+    """Выполняет обратное 2D дискретное косинусное преобразование для матрицы c.
+
+  Args:
+    c: Матрица входных данных.
+
+  Возвращает:
+    Матрица выходных данных.
+  """
+
+    m, n = c.shape
+    # Создаем матрицу коэффициентов IDCT.
+    a = np.zeros((m, n), dtype=complex)
+    for u in range(m):
+        for v in range(n):
+            for i in range(m):
+                for j in range(n):
+                    a[i, j] += c[u, v] * np.cos((2 * np.pi * (i * u + j * v)) / (m * n))
+    # Нормируем матрицу коэффициентов IDCT.
+    a /= np.sqrt(m * n)
+    return a
 
 
-def cox_algorithm_extract(image_path, message_length, alpha):
-    img = Image.open(image_path)
-    pixels = img.load()
+def dct_color(image):
+    """Выполняет DCT для цветного изображения.
 
-    width, height = img.size
-    binary_secret_message = ''
+  Args:
+    image: Цветное изображение в виде массива NumPy.
 
-    for y in range(height):
-        for x in range(width):
-            r, g, b = pixels[x, y]
-            binary_secret_message += format(r, '08b')[-1]
-            binary_secret_message += format(g, '08b')[-1]
-            binary_secret_message += format(b, '08b')[-1]
+  Возвращает:
+    Матрица коэффициентов DCT для каждого канала.
+  """
 
-    secret_message = ''
-    for i in range(0, message_length * 8, 8):
-        byte = binary_secret_message[i:i + 8]
-        secret_message += chr(int(byte, 2))
-
-    return secret_message
+    # Разделяем изображение на каналы.
+    channels = np.split(image, 3, axis=2)
+    # Вычисляем DCT для каждого канала.
+    dct_channels = [dct(channel) for channel in channels]
+    # Возвращаем матрицы коэффициентов DCT.
+    return dct_channels
 
 
-# Пример использования функции
-extracted_message = cox_algorithm_extract('embedded_image.bmp', len('Секретное сообщение'), 10)
-print(extracted_message)
+def idct_color(dct_channels):
+    """Выполняет обратное DCT для цветного изображения.
+
+  Args:
+    dct_channels: Матрица коэффициентов DCT для каждого канала.
+
+  Возвращает:
+    Цветное изображение в виде массива NumPy.
+  """
+
+    # Объединяем каналы.
+    channels = [idct(channel) for channel in dct_channels]
+    channels = np.stack(channels, axis=2)
+    return channels
+
+
+def embed_information(image, data, a, block_size=8):
+    """Встраивает информацию в изображение алгоритмом Cox.
+
+  Args:
+    image: Цветное изображение в виде массива NumPy.
+    data: Информация, которую необходимо встроить.
+    a: Коэффициент внедрения.
+    block_size: Размер блока DCT.
+
+  Возвращает:
+    Изображение с внедренной информацией.
+  """
+
+    # Вычисляем DCT для изображения.
+    dct_channels = dct_color(image)
+
+    # Находим индексы самых больших коэффициентов AC в каждом блоке.
+    max_indices = []
+    for channel in dct_channels:
+        max_indices.append(np.argmax(channel, axis=1))
+
+    # Вставляем информацию в коэффициенты AC.
+    for channel, index, value in zip(dct_channels, max_indices, data):
+        channel[index // block_size, index % block_size] = channel[index // block_size, index % block_size] * (
+                1 + a * value)
+
+    # Вычисляем обратное DCT для изображения.
+    return idct_color(dct_channels)
+
+
+def decode_image(filename):
+    pass
+
+
+def change_message(message):
+    m = []
+    for i in message:
+        if i == 0:
+            m.append(-1)
+        else:
+            m.append(1)
+
+    return m
+
+
+# Загружаем изображение.
+image = plt.imread("lena.bmp")
+
+# Генерируем данные для внедрения.
+data = np.random.randint(0, 255, (3, 100))
+
+# Встраиваем информацию в изображение.
+embedded_image = embed_information(image, data, 0.1, block_size=8)
+
+# Отображаем изображение до и после внедрения.
+plt.subplot(121)
+plt.imshow(image)
+plt.title("Исходное изображение")
+plt.subplot(122)
+plt.imshow(embedded_image)
+plt.title("Изображение с внедренной информацией")
+plt.show()

@@ -33,7 +33,9 @@ def extract_message(container_file):
 
     # Извлекаем сообщение из контейнера
     binary_message = ''
+    counter = 0
     for char in container_text:
+        counter+=1
         if char == '\u00A0':
             binary_message += '1'
         elif char == ' ':
@@ -43,6 +45,7 @@ def extract_message(container_file):
     for i in range(0, len(binary_message), 16):
         byte = binary_message[i:i + 16]
         message += chr(int(byte, 2))
+    print(f'capacity {counter}')
 
     return message
 
