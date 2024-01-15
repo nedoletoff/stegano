@@ -1,5 +1,6 @@
 import socket
 import threading
+import time
 
 
 def get_message(conn):
@@ -19,7 +20,11 @@ def exchange_messages(conn1, conn2, name):
         message = get_message(conn1)
         send_message(conn2, message, name)
         if not message:
-            break
+            print('Соединение закрыто ' + name)
+            time.sleep(5)
+            conn1.close()
+            conn2.close()
+            exit(-1)
 
 
 def server_program():
